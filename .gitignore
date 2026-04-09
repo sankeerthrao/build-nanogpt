@@ -31,6 +31,9 @@ venv/
 *.swp
 *.swo
 
+# CI (requires workflows permission to push)
+.github/workflows/
+
 # OS
 .DS_Store
 Thumbs.db

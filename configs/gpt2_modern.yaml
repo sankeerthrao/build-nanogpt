@@ -1,0 +1,47 @@
+# Modern GPT-2 124M with architectural improvements
+# Uses RoPE, SwiGLU, RMSNorm, and GQA — similar to LLaMA architecture
+
+# Model
+block_size: 1024
+vocab_size: 50304
+n_layer: 12
+n_head: 12
+n_kv_head: 4  # GQA with 4 KV heads (3x compression)
+n_embd: 768
+use_rope: true
+use_swiglu: true
+use_rmsnorm: true
+rope_theta: 10000.0
+dropout: 0.0
+
+# Training
+max_steps: 19073
+total_batch_size: 524288
+micro_batch_size: 64
+learning_rate: 3.0e-4
+min_lr_ratio: 0.1
+warmup_steps: 715
+weight_decay: 0.1
+grad_clip: 1.0
+lr_schedule: warmup_stable_decay
+stable_fraction: 0.8
+dtype: bfloat16
+gradient_checkpointing: false
+
+# Data
+data_root: edu_fineweb10B
+
+# Evaluation
+val_interval: 250
+val_steps: 20
+hellaswag_eval: true
+
+# Checkpointing
+log_dir: log
+checkpoint_interval: 5000
+keep_last_n_checkpoints: 5
+save_optimizer: true
+
+# Logging
+use_wandb: false
+use_tensorboard: false

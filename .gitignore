@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Data
+edu_fineweb10B/
+hellaswag/
+*.npy
+
+# Logs and checkpoints
+log/
+wandb/
+runs/
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Exports
+*.onnx
+*.pt
+*.torchscript

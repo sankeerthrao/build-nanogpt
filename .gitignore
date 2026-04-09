@@ -11,6 +11,8 @@ build/
 # Data
 edu_fineweb10B/
 hellaswag/
+nanogpt/eval/hellaswag/
+input.txt
 *.npy
 
 # Logs and checkpoints

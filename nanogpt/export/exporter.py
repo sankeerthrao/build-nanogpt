@@ -65,12 +65,27 @@ def export_onnx(
     print(f"ONNX model exported to {output_path} ({_format_size(file_size)})")
 
 
+class _LogitsOnlyWrapper(nn.Module):
+    """Wrapper that returns only logits (no None loss) for tracing compatibility."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, idx):
+        logits, _ = self.model(idx)
+        return logits
+
+
 def export_torchscript(
     model: nn.Module,
     output_path: str | os.PathLike,
     block_size: int = 1024,
 ) -> None:
     """Export model to TorchScript format via tracing.
+
+    The model is wrapped so that only logits are returned (no None loss),
+    which is required for TorchScript tracing compatibility.
 
     Args:
         model: The GPT model to export.
@@ -81,11 +96,13 @@ def export_torchscript(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     model.eval()
+    wrapper = _LogitsOnlyWrapper(model)
+    wrapper.eval()
     seq_len = min(block_size, 64)
     dummy_input = torch.zeros(1, seq_len, dtype=torch.long)
 
     with torch.no_grad():
-        traced = torch.jit.trace(model, (dummy_input,))
+        traced = torch.jit.trace(wrapper, (dummy_input,))
         traced.save(str(output_path))
 
     file_size = output_path.stat().st_size

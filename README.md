@@ -1,55 +1,219 @@
-# build nanoGPT
+# nanoGPT 2.0
 
-This repo holds the from-scratch reproduction of [nanoGPT](https://github.com/karpathy/nanoGPT/tree/master). The git commits were specifically kept step by step and clean so that one can easily walk through the git commit history to see it built slowly. Additionally, there is an accompanying [video lecture on YouTube](https://youtu.be/l8pRSuU81PU) where you can see me introduce each commit and explain the pieces along the way.
+[![CI](https://github.com/sankeerthrao/build-nanogpt/actions/workflows/ci.yml/badge.svg)](https://github.com/sankeerthrao/build-nanogpt/actions/workflows/ci.yml)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
 
-We basically start from an empty file and work our way to a reproduction of the [GPT-2](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) (124M) model. If you have more patience or money, the code can also reproduce the [GPT-3](https://arxiv.org/pdf/2005.14165) models. While the GPT-2 (124M) model probably trained for quite some time back in the day (2019, ~5 years ago), today, reproducing it is a matter of ~1hr and ~$10. You'll need a cloud GPU box if you don't have enough, for that I recommend [Lambda](https://lambdalabs.com).
+A **high-performance, modular GPT implementation** built from scratch. Based on Karpathy's [build-nanogpt](https://github.com/karpathy/build-nanogpt) lecture, extended with modern architectural improvements and production tooling.
 
-Note that GPT-2 and GPT-3 and both simple language models, trained on internet documents, and all they do is "dream" internet documents. So this repo/video this does not cover Chat finetuning, and you can't talk to it like you can talk to ChatGPT. The finetuning process (while quite simple conceptually - SFT is just about swapping out the dataset and continuing the training) comes after this part and will be covered at a later time. For now this is the kind of stuff that the 124M model says if you prompt it with "Hello, I'm a language model," after 10B tokens of training:
+## What's New in 2.0
 
+This is a ground-up refactoring of the original single-file training script into a proper Python package with modern ML engineering practices:
+
+### Architecture
+- **Rotary Position Embeddings (RoPE)** — replacing learned positional embeddings for better length generalization
+- **Grouped Query Attention (GQA)** — configurable KV-head compression for memory-efficient attention
+- **SwiGLU activation** — the activation function used in LLaMA/Mistral, replacing GELU
+- **RMSNorm** — faster, simpler alternative to LayerNorm
+- **Gradient checkpointing** — trade compute for memory to train larger models
+
+### Training
+- **YAML config system** with CLI overrides and strict validation (typos are caught, not silently ignored)
+- **3 LR schedules**: cosine, linear, warmup-stable-decay
+- **Checkpoint management** with automatic cleanup and training resume
+- **Multi-backend logging**: plain text, JSON-lines, Weights & Biases, TensorBoard
+
+### Generation
+- **Advanced sampling**: temperature, top-k, nucleus (top-p), and vectorized repetition penalty
+- **Standalone CLI** for inference from any checkpoint
+
+### Engineering
+- **Modular package** (`nanogpt/`) with clean separation of concerns
+- **78 unit tests** covering model, config, data, utils, and export
+- **CI/CD** with GitHub Actions (lint, test across Python 3.9-3.12, security audit)
+- **Model export** to ONNX and TorchScript
+- **`pyproject.toml`** packaging with optional dependency groups
+
+## Background
+
+We start from the [GPT-2](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) (124M) architecture and reproduce it from scratch. With modern hardware, this takes ~1hr and ~$10. The code can also scale to [GPT-3](https://arxiv.org/pdf/2005.14165) sizes.
+
+The accompanying [YouTube lecture](https://youtu.be/l8pRSuU81PU) walks through the original implementation step by step.
+
+> **Note:** This trains a base language model. It does not include chat/instruction finetuning — the model generates ("dreams") internet-style text, not conversational responses.
+
+Sample output after 10B tokens of training:
 ```
-Hello, I'm a language model, and my goal is to make English as easy and fun as possible for everyone, and to find out the different grammar rules
+Hello, I'm a language model, and my goal is to make English as easy and fun as possible for everyone
 Hello, I'm a language model, so the next time I go, I'll just say, I like this stuff.
 Hello, I'm a language model, and the question is, what should I do if I want to be a teacher?
-Hello, I'm a language model, and I'm an English person. In languages, "speak" is really speaking. Because for most people, there's
 ```
 
-And after 40B tokens of training:
+## Installation
+
+```bash
+# Clone and install
+git clone https://github.com/sankeerthrao/build-nanogpt.git
+cd build-nanogpt
+pip install -e .
+
+# With all optional dependencies
+pip install -e ".[all]"
+
+# Or specific groups
+pip install -e ".[train]"      # datasets, transformers
+pip install -e ".[logging]"    # wandb, tensorboard
+pip install -e ".[export]"     # onnx, onnxruntime
+pip install -e ".[dev]"        # pytest, ruff, mypy
+```
+
+## Quick Start
+
+### Train with default config (GPT-2 124M)
+```bash
+# Download and tokenize FineWeb-Edu dataset
+python -m nanogpt.data.fineweb
+
+# Train
+python -m nanogpt.train --config configs/gpt2_124m.yaml
+
+# Or with CLI overrides
+python -m nanogpt.train --config configs/gpt2_124m.yaml --learning_rate 3e-4 --use_wandb true
+```
+
+### Train with modern architecture (LLaMA-style)
+```bash
+python -m nanogpt.train --config configs/gpt2_modern.yaml
+```
+
+### Multi-GPU training
+```bash
+torchrun --standalone --nproc_per_node=8 -m nanogpt.train --config configs/gpt2_124m.yaml
+```
+
+### Generate text from a checkpoint
+```bash
+python -m nanogpt.generate \
+    --checkpoint log/model_19073.pt \
+    --prompt "The meaning of life is" \
+    --temperature 0.8 \
+    --top_p 0.95 \
+    --num_samples 3
+```
+
+### Resume training from a checkpoint
+```bash
+python -m nanogpt.train --config configs/gpt2_124m.yaml --resume log/model_05000.pt
+```
+
+## Configuration
+
+Training is configured via YAML files with CLI overrides. Unknown keys raise errors to catch typos.
+
+```yaml
+# configs/gpt2_124m.yaml - classic GPT-2 reproduction
+block_size: 1024
+vocab_size: 50304
+n_layer: 12
+n_head: 12
+n_embd: 768
+learning_rate: 6.0e-4
+lr_schedule: cosine
+dtype: bfloat16
+```
+
+```yaml
+# configs/gpt2_modern.yaml - modern LLaMA-style architecture
+use_rope: true          # Rotary Position Embeddings
+use_swiglu: true        # SwiGLU activation
+use_rmsnorm: true       # RMSNorm
+n_kv_head: 4            # Grouped Query Attention (4 KV heads)
+lr_schedule: warmup_stable_decay
+```
+
+See `nanogpt/config.py` for the full list of configuration options with defaults and descriptions.
+
+## Project Structure
 
 ```
-Hello, I'm a language model, a model of computer science, and it's a way (in mathematics) to program computer programs to do things like write
-Hello, I'm a language model, not a human. This means that I believe in my language model, as I have no experience with it yet.
-Hello, I'm a language model, but I'm talking about data. You've got to create an array of data: you've got to create that.
-Hello, I'm a language model, and all of this is about modeling and learning Python. I'm very good in syntax, however I struggle with Python due
+build-nanogpt/
+├── nanogpt/                  # Main package
+│   ├── model.py              # GPT model (MHA/GQA, RoPE, SwiGLU, RMSNorm)
+│   ├── config.py             # YAML + CLI configuration system
+│   ├── train.py              # Training loop with DDP support
+│   ├── generate.py           # Standalone generation script
+│   ├── data/
+│   │   ├── dataloader.py     # Streaming shard-based data loader
+│   │   └── fineweb.py        # FineWeb-Edu download & tokenization
+│   ├── eval/
+│   │   └── hellaswag.py      # HellaSwag benchmark evaluation
+│   ├── utils/
+│   │   ├── lr_schedule.py    # LR schedules (cosine, linear, WSD)
+│   │   ├── logging.py        # Multi-backend logger (txt, json, wandb, tb)
+│   │   └── checkpoint.py     # Save/load/cleanup checkpoints
+│   └── export/
+│       └── exporter.py       # ONNX and TorchScript export
+├── configs/                  # Pre-built YAML configurations
+│   ├── gpt2_124m.yaml        # Classic GPT-2 124M reproduction
+│   └── gpt2_modern.yaml      # Modern architecture (RoPE+SwiGLU+GQA)
+├── tests/                    # 78 unit tests
+├── train_gpt2.py             # Original single-file training script
+├── fineweb.py                # Original data download script
+├── hellaswag.py              # Original evaluation script
+└── pyproject.toml            # Package configuration
 ```
 
-Lol. Anyway, once the video comes out, this will also be a place for FAQ, and a place for fixes and errata, of which I am sure there will be a number :)
+## Architecture Options
 
-For discussions and questions, please use [Discussions tab](https://github.com/karpathy/build-nanogpt/discussions), and for faster communication, have a look at my [Zero To Hero Discord](https://discord.gg/3zy8kqD9Cp), channel **#nanoGPT**:
+| Feature | Classic (GPT-2) | Modern (LLaMA-style) |
+|---------|-----------------|---------------------|
+| Position embeddings | Learned | RoPE |
+| Attention | Multi-Head (MHA) | Grouped Query (GQA) |
+| Activation | GELU | SwiGLU |
+| Normalization | LayerNorm | RMSNorm |
+| Projection bias | Yes | No |
 
-[![](https://dcbadge.vercel.app/api/server/3zy8kqD9Cp?compact=true&style=flat)](https://discord.gg/3zy8kqD9Cp)
+## Model Export
 
-## Video
+```python
+from nanogpt.model import GPT, GPTConfig
+from nanogpt.export import export_torchscript, export_onnx
 
-[Let's reproduce GPT-2 (124M) YouTube lecture](https://youtu.be/l8pRSuU81PU)
+model = GPT(GPTConfig(vocab_size=50304))
 
-## Errata
+# TorchScript
+export_torchscript(model, "model.torchscript")
 
-Minor cleanup, we forgot to delete `register_buffer` of the bias once we switched to flash attention, fixed with a recent PR.
+# ONNX (requires pip install nanogpt[export])
+export_onnx(model, "model.onnx")
+```
 
-Earlier version of PyTorch may have difficulty converting from uint16 to long. Inside `load_tokens`, we added `npt = npt.astype(np.int32)` to use numpy to convert uint16 to int32 before converting to torch tensor and then converting to long.
+## Development
 
-The `torch.autocast` function takes an arg `device_type`, to which I tried to stubbornly just pass `device` hoping it works ok, but PyTorch actually really wants just the type and creates errors in some version of PyTorch. So we want e.g. the device `cuda:3` to get stripped to `cuda`. Currently, device `mps` (Apple Silicon) would become `device_type` CPU, I'm not 100% sure this is the intended PyTorch way.
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
 
-Confusingly, `model.require_backward_grad_sync` is actually used by both the forward and backward pass. Moved up the line so that it also gets applied to the forward pass. 
+# Run tests
+pytest tests/ -v
 
-## Prod
+# Lint
+ruff check nanogpt/ tests/
 
-For more production-grade runs that are very similar to nanoGPT, I recommend looking at the following repos:
+# Type check
+mypy nanogpt/
+```
 
+## Original Resources
+
+- [Video lecture: Let's reproduce GPT-2 (124M)](https://youtu.be/l8pRSuU81PU)
+- [Discussions](https://github.com/karpathy/build-nanogpt/discussions)
+- [Zero To Hero Discord](https://discord.gg/3zy8kqD9Cp) — channel **#nanoGPT**
+
+For production-grade training at scale, see:
 - [litGPT](https://github.com/Lightning-AI/litgpt)
 - [TinyLlama](https://github.com/jzhang38/TinyLlama)
-
-## FAQ
 
 ## License
 
